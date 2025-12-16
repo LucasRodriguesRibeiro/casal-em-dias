@@ -482,6 +482,12 @@ const App: React.FC = () => {
 
     const renderDashboard = () => (
         <div className="space-y-8 animate-fade-in">
+            {/* Emotional Positioning Block */}
+            <div className="bg-emerald-50 rounded-2xl p-6 md:p-8 text-center shadow-sm border border-emerald-100">
+                <h2 className="text-2xl md:text-3xl font-bold text-emerald-800 mb-2">Casal em Dias</h2>
+                <p className="text-emerald-700 text-lg md:text-xl font-medium">Organizar o dinheiro em casal não precisa ser motivo de briga.</p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard label="Renda Total" value={formatCurrency(totals.income)} color="text-emerald-600" icon={<WalletIcon />} />
                 <StatCard label="Despesas Fixas" value={formatCurrency(totals.fixed)} color="text-orange-600" icon={<MoneyIcon />} />
