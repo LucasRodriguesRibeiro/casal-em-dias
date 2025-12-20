@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Input, Card, PigIcon } from './UIComponents';
-import { authService, User } from '../services/authService';
+import { supabaseAuthService } from '../services/supabaseAuthService';
+import { User } from '../types';
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -24,24 +25,32 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      let user;
       if (isRegistering) {
         if (!formData.name || !formData.email || !formData.password) throw new Error('Por favor, preencha todos os campos.');
         if (formData.password.length < 6) throw new Error('A senha deve ter pelo menos 6 caracteres.');
-        user = await authService.register(formData.name, formData.email, formData.password);
+
+        await supabaseAuthService.signUp(formData.email, formData.password, {
+          data: {
+            name: formData.name
+          }
+        });
+        // We might want to update the display name here, but let's stick to basic auth first or add update profile logic
       } else {
         if (!formData.email || !formData.password) throw new Error('Informe seu email e senha.');
-        user = await authService.login(formData.email, formData.password);
+        await supabaseAuthService.signIn(formData.email, formData.password);
       }
-      onLogin(user);
+      // onLogin is likely not needed anymore if we rely on onAuthStateChange in App.tsx, 
+      // but keeping it if it triggers UI state changes or just to satisfy props.
+      // However, App.tsx will redirect based on user state automatically.
     } catch (err: any) {
+      // console.error(err);
       let msg = err.message || 'Ocorreu um erro ao tentar entrar.';
-      // Friendly error mapping
-      if (msg.includes('auth/user-not-found') || msg.includes('auth/wrong-password') || msg.includes('invalid-credential')) {
+      // Friendly error mapping for Supabase
+      if (msg.includes('Invalid login credentials')) {
         msg = 'Email ou senha incorretos.';
-      } else if (msg.includes('auth/email-already-in-use')) {
+      } else if (msg.includes('User already registered')) {
         msg = 'Este email já está cadastrado.';
-      } else if (msg.includes('auth/invalid-email')) {
+      } else if (msg.includes('valid email')) {
         msg = 'Digite um email válido.';
       }
       setError(msg);

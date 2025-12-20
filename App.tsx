@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { AppState, MonthData, ViewState, Expense, ExpenseType, User } from './types';
 import { v4 as uuidv4 } from 'uuid';
-import { AppState, MonthData, ViewState, Expense, ExpenseType } from './types';
 import { generateMonthId, getMonthLabel, calculateTotals, formatCurrency, calculateAccumulatedSavings, FinanceAPI } from './services/financeService';
-import { authService, User } from './services/authService';
+import { supabaseAuthService } from './services/supabaseAuthService';
+import { supabase } from './services/supabaseClient';
 import { CATEGORIES, MONTH_NAMES } from './constants';
 import {
     Button, Card, Input, Select, StatCard, FeedbackMessage, EmptyState, OnboardingBanner,
@@ -57,11 +58,23 @@ const App: React.FC = () => {
 
     // --- Auth Effects ---
     useEffect(() => {
-        const currentUser = authService.getCurrentUser();
-        if (currentUser) {
-            setUser(currentUser);
-        }
-        setAuthLoading(false);
+        // Initial Session Check
+        supabaseAuthService.getSession().then(session => {
+            setUser(session ? { id: session.user.id, email: session.user.email!, name: session.user.user_metadata.name } : null);
+            setAuthLoading(false);
+        });
+
+        // Listen for Auth Changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUser(session ? { id: session.user.id, email: session.user.email!, name: session.user.user_metadata.name } : null);
+            setAuthLoading(false);
+            if (!session) {
+                setMonths([]); // Clear data on logout
+                setCurrentMonthId('');
+            }
+        });
+
+        return () => subscription.unsubscribe();
     }, []);
 
     // --- Onboarding State ---
@@ -94,11 +107,15 @@ const App: React.FC = () => {
         localStorage.setItem('hasSeenOnboarding', 'true');
     };
 
-    const handleLogout = () => {
-        authService.logout();
-        setUser(null);
-        setMonths([]); // Clear data from view
-        setCurrentMonthId('');
+    const handleRestartOnboarding = () => {
+        setOnboardingStep(1);
+        setCurrentView(ViewState.SALARIES);
+        localStorage.removeItem('hasSeenOnboarding');
+    };
+
+    const handleLogout = async () => {
+        await supabaseAuthService.signOut();
+        // State update handled by onAuthStateChange
     };
 
     // --- Data Loading Effect (Simulating Backend Fetch) ---
@@ -808,6 +825,9 @@ const App: React.FC = () => {
                         {/* User Info & Logout */}
                         <div className="flex items-center gap-3 bg-emerald-800/30 pl-4 pr-1 py-1 rounded-full border border-emerald-600/30">
                             <span className="text-sm font-medium text-emerald-50 truncate max-w-[150px]">{user.name}</span>
+                            <button onClick={handleRestartOnboarding} className="p-1.5 bg-emerald-900/50 hover:bg-emerald-600 rounded-full transition-colors mr-1" title="Reiniciar Tutorial">
+                                <svg className="w-4 h-4 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </button>
                             <button onClick={handleLogout} className="p-1.5 bg-emerald-900/50 hover:bg-red-500/80 rounded-full transition-colors" title="Sair">
                                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                             </button>

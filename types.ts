@@ -31,3 +31,10 @@ export enum ViewState {
   EXPENSES_VARIABLE = 'EXPENSES_VARIABLE',
   CAIXINHA = 'CAIXINHA',
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}

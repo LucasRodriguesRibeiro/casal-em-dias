@@ -10,10 +10,11 @@ export const supabaseAuthService = {
         return data;
     },
 
-    signUp: async (email: string, password: string) => {
+    signUp: async (email: string, password: string, options?: any) => {
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
+            options // passing options like data: { name: ... }
         });
         if (error) throw error;
         return data;
