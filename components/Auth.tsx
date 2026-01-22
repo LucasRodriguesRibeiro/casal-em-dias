@@ -73,7 +73,7 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
 
       <Card className="w-full max-w-md shadow-xl border-none animate-slide-up">
         <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">
-          {isRegistering ? 'Comece sua jornada' : 'Que bom te ver de novo!'}
+          {isRegistering ? 'Comece sua jornada' : 'Casal que organiza juntos, vencem juntos'}
         </h2>
         <p className="text-center text-slate-500 mb-6">
           {isRegistering ? 'Crie sua conta em 30 segundos.' : 'Acesse sua conta para continuar.'}

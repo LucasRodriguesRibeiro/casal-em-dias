@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppState, MonthData, ViewState, Expense, ExpenseType, User } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateMonthId, getMonthLabel, calculateTotals, formatCurrency, calculateAccumulatedSavings, FinanceAPI } from './services/financeService';
@@ -9,9 +9,25 @@ import {
     Button, Card, Input, Select, StatCard, FeedbackMessage, EmptyState, OnboardingBanner,
     PlusIcon, TrashIcon, EditIcon,
     PigIcon, CalendarIcon, WalletIcon, MoneyIcon, ShoppingBagIcon, PieChartIcon,
-    ArrowRightIcon, ArrowLeftIcon, MenuIcon
+    ArrowRightIcon, ArrowLeftIcon, MenuIcon, CrownIcon
 } from './components/UIComponents';
 import { AuthScreen } from './components/Auth';
+
+
+// TODO: Replace with your actual Stripe Price ID (e.g., price_1Mc...)
+
+
+// Debounce helper function
+function debounce<T extends (...args: any[]) => any>(
+    func: T,
+    wait: number
+): (...args: Parameters<T>) => void {
+    let timeout: NodeJS.Timeout;
+    return (...args: Parameters<T>) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
 
 // Initial State Helper
 const getInitialMonth = (date = new Date()): MonthData => ({
@@ -49,6 +65,9 @@ const App: React.FC = () => {
 
     // Global Feedback State
     const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
+
+    // Save Status State
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
     // Helper to show feedback
     const showFeedback = (message: string, type: 'success' | 'danger' = 'success') => {
@@ -159,17 +178,35 @@ const App: React.FC = () => {
         loadData();
     }, [user]);
 
-    // --- Data Saving Effect ---
-    // In a real backend scenario, you might debounce this or save on specific actions instead of useEffect.
-    // For now, we simulate an auto-save.
-    // --- Data Saving Effect ---
-    // In a real backend scenario, you might debounce this or save on specific actions instead of useEffect.
-    // For now, we simulate an auto-save.
+    // --- Optimized Data Saving with Debounce ---
+    // Debounced save function that saves only the current month
+    const debouncedSave = useCallback(
+        debounce(async (userId: string, monthData: MonthData) => {
+            setSaveStatus('saving');
+            try {
+                await FinanceAPI.saveMonth(userId, monthData);
+                setSaveStatus('saved');
+                setTimeout(() => setSaveStatus('idle'), 2000);
+            } catch (error) {
+                setSaveStatus('error');
+                console.error('Save failed:', error);
+                setTimeout(() => setSaveStatus('idle'), 5000);
+            }
+        }, 2000),
+        []
+    );
+
+    // --- Computeds ---
+    const currentMonthData = useMemo(() =>
+        months.find(m => m.id === currentMonthId) || getInitialMonth(),
+        [months, currentMonthId]);
+
+    // Trigger save only when current month changes
     useEffect(() => {
-        if (user && months.length > 0) {
-            FinanceAPI.saveMonths(user.id, months).catch(err => console.error("Error auto-saving", err));
+        if (user && currentMonthData && currentMonthData.id && months.length > 0) {
+            debouncedSave(user.id, currentMonthData);
         }
-    }, [months, user]);
+    }, [currentMonthData, user, debouncedSave, months.length]);
 
     // Sync Salary Form when Data Changes
     useEffect(() => {
@@ -189,11 +226,7 @@ const App: React.FC = () => {
         setFeedback(null);
     }, [currentMonthId, currentView]);
 
-    // --- Computeds ---
-
-    const currentMonthData = useMemo(() =>
-        months.find(m => m.id === currentMonthId) || getInitialMonth(),
-        [months, currentMonthId]);
+    // --- Computeds (continued) ---
 
     const totals = useMemo(() => calculateTotals(currentMonthData), [currentMonthData]);
 
@@ -413,6 +446,8 @@ const App: React.FC = () => {
         showFeedback("Sucesso! O saldo foi registrado na sua caixinha.");
     };
 
+
+
     // --- Views Renders ---
 
     const renderMonthSelection = () => (
@@ -464,7 +499,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                    {[...months].sort((a, b) => b.id.localeCompare(b.id)).map(month => (
+                    {[...months].sort((a, b) => b.id.localeCompare(a.id)).map(month => (
                         <div
                             key={month.id}
                             onClick={() => handleSelectMonth(month.id)}
@@ -775,6 +810,8 @@ const App: React.FC = () => {
         </div>
     );
 
+
+
     const NavItem = ({ view, label, icon }: { view: ViewState, label: string, icon: React.ReactNode }) => (
         <button
             onClick={() => setCurrentView(view)}
@@ -825,6 +862,28 @@ const App: React.FC = () => {
                         {/* User Info & Logout */}
                         <div className="flex items-center gap-3 bg-emerald-800/30 pl-4 pr-1 py-1 rounded-full border border-emerald-600/30">
                             <span className="text-sm font-medium text-emerald-50 truncate max-w-[150px]">{user.name}</span>
+
+                            {/* Save Status Indicator */}
+                            {saveStatus === 'saving' && (
+                                <span className="text-xs text-emerald-200 flex items-center gap-1 mr-2">
+                                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Salvando...
+                                </span>
+                            )}
+                            {saveStatus === 'saved' && (
+                                <span className="text-xs text-emerald-200 flex items-center gap-1 mr-2">
+                                    ✓ Salvo
+                                </span>
+                            )}
+                            {saveStatus === 'error' && (
+                                <span className="text-xs text-red-300 flex items-center gap-1 mr-2">
+                                    ⚠ Erro
+                                </span>
+                            )}
+
                             <button onClick={handleRestartOnboarding} className="p-1.5 bg-emerald-900/50 hover:bg-emerald-600 rounded-full transition-colors mr-1" title="Reiniciar Tutorial">
                                 <svg className="w-4 h-4 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             </button>
@@ -857,6 +916,7 @@ const App: React.FC = () => {
                         <div className="w-px bg-slate-200 mx-2 my-2 hidden md:block"></div>
                         <NavItem view={ViewState.CAIXINHA} label="Caixinha" icon={<PigIcon className="w-5 h-5" />} />
 
+
                     </div>
                 </div>
             </div>
@@ -870,6 +930,7 @@ const App: React.FC = () => {
                     {currentView === ViewState.EXPENSES_FIXED && renderExpenses('fixed')}
                     {currentView === ViewState.EXPENSES_VARIABLE && renderExpenses('variable')}
                     {currentView === ViewState.CAIXINHA && renderCaixinha()}
+
                 </div>
             </main>
             {/* Onboarding Banner */}

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico - Casal em Dias</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .ok { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #059669;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Diagnóstico do Sistema</h1>
+    
+    <div class="card">
+        <h2>1. Variáveis de Ambiente</h2>
+        <div id="env-check">Verificando...</div>
+    </div>
+
+    <div class="card">
+        <h2>2. Conectividade Supabase</h2>
+        <div id="supabase-check">Verificando...</div>
+        <button onclick="testSupabase()">Testar Conexão</button>
+    </div>
+
+    <div class="card">
+        <h2>3. Teste de Autenticação</h2>
+        <div id="auth-check">
+            <p>Teste de login com credenciais de teste:</p>
+            <button onclick="testAuth()">Testar Login</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>4. Logs do Console</h2>
+        <div id="console-logs">
+            <p>Abra o DevTools (F12) e veja a aba Console para mais detalhes.</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Check environment variables
+        const envCheck = document.getElementById('env-check');
+        const url = import.meta.env.VITE_SUPABASE_URL;
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+        let html = '<div class="test-result">';
+        html += `<strong>VITE_SUPABASE_URL:</strong> ${url ? '<span class="status ok">✓ Carregado</span>' : '<span class="status error">✗ Faltando</span>'}<br>`;
+        if (url) html += `<small>Valor: ${url}</small><br>`;
+        
+        html += `<strong>VITE_SUPABASE_ANON_KEY:</strong> ${key ? '<span class="status ok">✓ Carregado</span>' : '<span class="status error">✗ Faltando</span>'}<br>`;
+        if (key) html += `<small>Primeiros 20 caracteres: ${key.substring(0, 20)}...</small>`;
+        html += '</div>';
+
+        if (!url || !key) {
+            html += '<div class="test-result" style="border-color: #dc3545;">';
+            html += '<strong style="color: #dc3545;">❌ PROBLEMA ENCONTRADO!</strong><br>';
+            html += 'Variáveis de ambiente não estão carregando.<br><br>';
+            html += '<strong>Solução:</strong><br>';
+            html += '1. Verifique se o arquivo <code>.env.local</code> existe na raiz do projeto<br>';
+            html += '2. Verifique se as variáveis começam com <code>VITE_</code><br>';
+            html += '3. Reinicie o servidor: <code>Ctrl+C</code> e <code>npm run dev</code>';
+            html += '</div>';
+        }
+
+        envCheck.innerHTML = html;
+
+        // Test Supabase connection
+        window.testSupabase = async () => {
+            const checkDiv = document.getElementById('supabase-check');
+            checkDiv.innerHTML = '<p>Testando conexão...</p>';
+
+            if (!url || !key) {
+                checkDiv.innerHTML = '<div class="test-result" style="border-color: #dc3545;">❌ Não é possível testar: variáveis de ambiente faltando</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${url}/rest/v1/`, {
+                    headers: {
+                        'apikey': key,
+                        'Authorization': `Bearer ${key}`
+                    }
+                });
+
+                let html = '<div class="test-result" style="border-color: #28a745;">';
+                html += `<strong style="color: #28a745;">✓ Supabase está acessível!</strong><br>`;
+                html += `Status: ${response.status}<br>`;
+                html += `URL: ${url}`;
+                html += '</div>';
+                checkDiv.innerHTML = html;
+            } catch (error) {
+                let html = '<div class="test-result" style="border-color: #dc3545;">';
+                html += `<strong style="color: #dc3545;">✗ Erro ao conectar com Supabase</strong><br>`;
+                html += `Erro: ${error.message}<br><br>`;
+                html += '<strong>Possíveis causas:</strong><br>';
+                html += '• Sem conexão com internet<br>';
+                html += '• Supabase project pausado ou deletado<br>';
+                html += '• Firewall bloqueando conexão<br>';
+                html += '• URL incorreta no .env.local';
+                html += '</div>';
+                checkDiv.innerHTML = html;
+            }
+        };
+
+        // Test authentication
+        window.testAuth = async () => {
+            const checkDiv = document.getElementById('auth-check');
+            checkDiv.innerHTML = '<p>Testando autenticação...</p>';
+
+            if (!url || !key) {
+                checkDiv.innerHTML = '<div class="test-result" style="border-color: #dc3545;">❌ Não é possível testar: variáveis de ambiente faltando</div>';
+                return;
+            }
+
+            try {
+                // Import Supabase client
+                const { createClient } = await import('@supabase/supabase-js');
+                const supabase = createClient(url, key);
+
+                // Try to sign up a test user
+                const testEmail = `teste_${Date.now()}@teste.com`;
+                const { data, error } = await supabase.auth.signUp({
+                    email: testEmail,
+                    password: '123456',
+                    options: {
+                        data: { name: 'Teste' }
+                    }
+                });
+
+                let html = '<div class="test-result">';
+                if (error) {
+                    html += `<strong style="color: #dc3545;">✗ Erro na autenticação</strong><br>`;
+                    html += `Erro: ${error.message}<br>`;
+                    html += `Código: ${error.status || 'N/A'}`;
+                } else {
+                    html += `<strong style="color: #28a745;">✓ Autenticação funcionando!</strong><br>`;
+                    html += `Usuário de teste criado: ${testEmail}<br>`;
+                    html += `ID: ${data.user?.id || 'N/A'}`;
+                }
+                html += '</div>';
+                checkDiv.innerHTML = html;
+            } catch (error) {
+                let html = '<div class="test-result" style="border-color: #dc3545;">';
+                html += `<strong style="color: #dc3545;">✗ Erro ao testar autenticação</strong><br>`;
+                html += `Erro: ${error.message}`;
+                html += '</div>';
+                checkDiv.innerHTML = html;
+            }
+        };
+
+        // Auto-test Supabase on load
+        setTimeout(() => testSupabase(), 500);
+
+        console.log('🔧 Diagnóstico do Sistema');
+        console.log('URL:', url);
+        console.log('Key exists:', !!key);
+    </script>
+</body>
+</html>

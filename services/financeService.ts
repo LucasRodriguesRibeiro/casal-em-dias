@@ -174,5 +174,83 @@ export const FinanceAPI = {
         if (insertError) console.error("Error inserting expenses:", insertError);
       }
     }
+  },
+
+  /**
+   * Saves a single month efficiently (optimized for auto-save).
+   * Uses upsert for expenses instead of delete+insert to prevent data loss.
+   */
+  saveMonth: async (userId: string, month: MonthData): Promise<void> => {
+    // 1. Upsert Month Record
+    const { data: savedMonth, error: monthError } = await supabase
+      .from('months')
+      .upsert({
+        user_id: userId,
+        month_code: month.id,
+        label: month.label,
+        salary1: month.salary1,
+        salary2: month.salary2,
+        closed: month.closed
+      }, { onConflict: 'user_id, month_code' })
+      .select()
+      .single();
+
+    if (monthError) {
+      console.error("Error saving month:", monthError);
+      throw monthError;
+    }
+
+    if (!savedMonth) return;
+
+    const monthUUID = savedMonth.id;
+
+    // 2. Sync Expenses Intelligently
+    // Fetch existing expenses for this month
+    const { data: existingExpenses, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('month_id', monthUUID);
+
+    if (fetchError) {
+      console.error("Error fetching expenses:", fetchError);
+      throw fetchError;
+    }
+
+    const existingIds = new Set((existingExpenses || []).map(e => e.id));
+    const currentIds = new Set(month.expenses.map(e => e.id));
+
+    // Delete expenses that were removed
+    const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+    if (toDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('expenses')
+        .delete()
+        .in('id', toDelete);
+
+      if (deleteError) console.error("Error deleting expenses:", deleteError);
+    }
+
+    // Upsert current expenses (insert new, update existing)
+    if (month.expenses.length > 0) {
+      const expensesToUpsert = month.expenses.map(e => ({
+        id: e.id, // Keep UI-generated UUID
+        user_id: userId,
+        month_id: monthUUID,
+        name: e.name,
+        value: e.value,
+        category: e.category,
+        date: e.date,
+        type: e.type
+      }));
+
+      const { error: upsertError } = await supabase
+        .from('expenses')
+        .upsert(expensesToUpsert, { onConflict: 'id' });
+
+      if (upsertError) {
+        console.error("Error upserting expenses:", upsertError);
+        throw upsertError;
+      }
+    }
   }
 };
