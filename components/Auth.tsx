@@ -13,11 +13,80 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Recovery State
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState<'email' | 'otp' | 'newPassword'>('email');
+  const [otpCode, setOtpCode] = useState('');
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: ''
   });
+
+  const handleSendRecoveryCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.email) {
+      setError('Digite seu email para receber o código.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await supabaseAuthService.sendRecoveryCode(formData.email);
+      setRecoveryStep('otp');
+      setError('');
+    } catch (err: any) {
+      setError(err.message || 'Erro ao enviar código. Verifique o email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode) {
+      setError('Digite o código de 6 dígitos.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await supabaseAuthService.verifyRecoveryCode(formData.email, otpCode);
+      setRecoveryStep('newPassword');
+    } catch (err: any) {
+      setError('Código inválido ou expirado.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.password.length < 6) {
+      setError('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await supabaseAuthService.updatePassword(formData.password);
+      // Success! Reset state and go back to login
+      setIsRecovering(false);
+      setRecoveryStep('email');
+      setOtpCode('');
+      setFormData(prev => ({ ...prev, password: '' })); // Clear password
+      setError(''); // Clear errors
+      alert('Senha atualizada com sucesso! Faça login com sua nova senha.');
+    } catch (err: any) {
+      setError(err.message || 'Erro ao atualizar senha.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,30 +103,107 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
             name: formData.name
           }
         });
-        // We might want to update the display name here, but let's stick to basic auth first or add update profile logic
       } else {
         if (!formData.email || !formData.password) throw new Error('Informe seu email e senha.');
         await supabaseAuthService.signIn(formData.email, formData.password);
       }
-      // onLogin is likely not needed anymore if we rely on onAuthStateChange in App.tsx, 
-      // but keeping it if it triggers UI state changes or just to satisfy props.
-      // However, App.tsx will redirect based on user state automatically.
     } catch (err: any) {
-      // console.error(err);
       let msg = err.message || 'Ocorreu um erro ao tentar entrar.';
-      // Friendly error mapping for Supabase
+
+      // Handle specific Supabase errors
       if (msg.includes('Invalid login credentials')) {
-        msg = 'Email ou senha incorretos.';
+        msg = 'Senha incorreta.';
       } else if (msg.includes('User already registered')) {
         msg = 'Este email já está cadastrado.';
       } else if (msg.includes('valid email')) {
         msg = 'Digite um email válido.';
       }
+
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
+
+  if (isRecovering) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-none animate-slide-up">
+          <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">Recuperar Senha</h2>
+
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-100 flex items-center animate-shake">
+              <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+              {error}
+            </div>
+          )}
+
+          {recoveryStep === 'email' && (
+            <form onSubmit={handleSendRecoveryCode} className="space-y-4">
+              <p className="text-center text-slate-500 mb-6">Digite seu email para receber um código de recuperação.</p>
+              <Input
+                label="Email"
+                type="email"
+                placeholder="seu@email.com"
+                value={formData.email}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                disabled={loading}
+              />
+              <Button className="w-full h-12" disabled={loading}>
+                {loading ? 'Enviando...' : 'Enviar Código'}
+              </Button>
+            </form>
+          )}
+
+          {recoveryStep === 'otp' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <p className="text-center text-slate-500 mb-6">Digite o código de 6 dígitos enviado para <strong>{formData.email}</strong>.</p>
+              <Input
+                label="Código de Verificação"
+                placeholder="000000"
+                value={otpCode}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                disabled={loading}
+              />
+              <Button className="w-full h-12" disabled={loading}>
+                {loading ? 'Verificando...' : 'Verificar Código'}
+              </Button>
+              <button type="button" onClick={() => setRecoveryStep('email')} className="block w-full text-center text-sm text-slate-400 mt-2 hover:text-emerald-600">Reenviar código</button>
+            </form>
+          )}
+
+          {recoveryStep === 'newPassword' && (
+            <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <p className="text-center text-slate-500 mb-6">Crie uma nova senha segura.</p>
+              <Input
+                label="Nova Senha"
+                type="password"
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                disabled={loading}
+              />
+              <Button className="w-full h-12" disabled={loading}>
+                {loading ? 'Salvando...' : 'Salvar Nova Senha'}
+              </Button>
+            </form>
+          )}
+
+          <button
+            onClick={() => {
+              setIsRecovering(false);
+              setRecoveryStep('email');
+              setError('');
+              setOtpCode('');
+            }}
+            className="block w-full mt-6 py-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            Voltar para o login
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
@@ -73,16 +219,30 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
 
       <Card className="w-full max-w-md shadow-xl border-none animate-slide-up">
         <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">
-          {isRegistering ? 'Comece sua jornada' : 'Casal que organiza juntos, vencem juntos'}
+          {isRegistering ? 'Comece sua jornada' : 'Seu financeiro em paz'}
         </h2>
         <p className="text-center text-slate-500 mb-6">
           {isRegistering ? 'Crie sua conta em 30 segundos.' : 'Acesse sua conta para continuar.'}
         </p>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-100 flex items-center animate-shake">
-            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-            {error}
+          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-100 flex flex-col animate-shake">
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+              {error}
+            </div>
+            {!isRegistering && (error.includes('Senha') || error.includes('cadastrado')) && (
+              <button
+                onClick={() => {
+                  setIsRecovering(true);
+                  setError('');
+                  setFormData(prev => ({ ...prev, password: '' })); // Reset password on switch
+                }}
+                className="mt-2 text-xs font-semibold underline hover:text-red-800 self-start ml-6"
+              >
+                Esqueci minha senha / Recuperar acesso
+              </button>
+            )}
           </div>
         )}
 
@@ -128,6 +288,19 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
                 )}
               </button>
             </div>
+            {!isRegistering && !error && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecovering(true);
+                  setFormData(prev => ({ ...prev, password: '' }));
+                  setError('');
+                }}
+                className="text-xs text-right text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                Esqueci minha senha
+              </button>
+            )}
           </div>
 
           <Button className="w-full h-12 text-base shadow-lg shadow-emerald-100 mt-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none" disabled={loading}>
@@ -157,6 +330,7 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
               onClick={() => {
                 setIsRegistering(!isRegistering);
                 setError('');
+                setIsRecovering(false);
                 setFormData({ name: '', email: '', password: '' });
                 setShowPassword(false);
               }}
