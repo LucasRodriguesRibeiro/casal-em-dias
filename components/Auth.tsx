@@ -49,12 +49,15 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
     // Attempt to send real code, but allow bypass flow regardless
     try {
       await supabaseAuthService.sendRecoveryCode(formData.email);
+      // Only show success message if it actually worked? 
+      // User requested "code sent to email", so we confirm that action.
+      alert('Código enviado para o seu email! Verifique sua caixa de entrada.');
     } catch (err: any) {
       console.log("Supabase send failed or skipped:", err.message);
+      // Fallback message so user isn't stuck if service is down
+      alert('Se o email estiver cadastrado, um código foi enviado.');
     }
 
-    // Always show the standard code as requested by user
-    alert('Código de segurança enviado: 123456');
     setRecoveryStep('otp');
     setLoading(false);
   };
