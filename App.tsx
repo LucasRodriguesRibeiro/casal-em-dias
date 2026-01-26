@@ -69,6 +69,12 @@ const App: React.FC = () => {
     // Save Status State
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+    // Password Modal State
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [passwordFeedback, setPasswordFeedback] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
+
     // Helper to show feedback
     const showFeedback = (message: string, type: 'success' | 'danger' = 'success') => {
         setFeedback({ message, type });
@@ -446,6 +452,28 @@ const App: React.FC = () => {
         showFeedback("Sucesso! O saldo foi registrado na sua caixinha.");
     };
 
+    const handleChangePassword = async () => {
+        if (newPassword.length < 6) {
+            setPasswordFeedback({ message: "A senha deve ter pelo menos 6 caracteres", type: 'danger' });
+            return;
+        }
+        setPasswordLoading(true);
+        setPasswordFeedback(null);
+        try {
+            await supabaseAuthService.updatePassword(newPassword);
+            setPasswordFeedback({ message: "Senha alterada com sucesso!", type: 'success' });
+            setTimeout(() => {
+                setIsPasswordModalOpen(false);
+                setNewPassword('');
+                setPasswordFeedback(null);
+            }, 2000);
+        } catch (e: any) {
+            setPasswordFeedback({ message: "Erro ao alterar senha: " + e.message, type: 'danger' });
+        } finally {
+            setPasswordLoading(false);
+        }
+    };
+
 
 
     // --- Views Renders ---
@@ -810,6 +838,44 @@ const App: React.FC = () => {
         </div>
     );
 
+    const renderChangePasswordModal = () => (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">
+            <Card title="Alterar Senha" className="w-full max-w-md shadow-2xl relative border-none">
+                <button
+                    onClick={() => { setIsPasswordModalOpen(false); setPasswordFeedback(null); setNewPassword(''); }}
+                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+
+                <div className="space-y-4 mt-2">
+                    <p className="text-slate-500 text-sm">Digite sua nova senha abaixo para atualizar seu acesso.</p>
+                    <Input
+                        label="Nova Senha"
+                        type="password"
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        disabled={passwordLoading}
+                    />
+
+                    {passwordFeedback && (
+                        <FeedbackMessage type={passwordFeedback.type} message={passwordFeedback.message} />
+                    )}
+
+                    <div className="flex gap-3 pt-4">
+                        <Button variant="ghost" onClick={() => setIsPasswordModalOpen(false)} className="w-full h-11">
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleChangePassword} disabled={!newPassword || passwordLoading} className="w-full h-11 shadow-emerald-200">
+                            {passwordLoading ? 'Salvando...' : 'Atualizar Senha'}
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
+
 
 
     const NavItem = ({ view, label, icon }: { view: ViewState, label: string, icon: React.ReactNode }) => (
@@ -884,6 +950,9 @@ const App: React.FC = () => {
                                 </span>
                             )}
 
+                            <button onClick={() => setIsPasswordModalOpen(true)} className="p-1.5 bg-emerald-900/50 hover:bg-emerald-600 rounded-full transition-colors mr-1" title="Alterar Senha">
+                                <svg className="w-4 h-4 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            </button>
                             <button onClick={handleRestartOnboarding} className="p-1.5 bg-emerald-900/50 hover:bg-emerald-600 rounded-full transition-colors mr-1" title="Reiniciar Tutorial">
                                 <svg className="w-4 h-4 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             </button>
@@ -955,6 +1024,8 @@ const App: React.FC = () => {
                 )
             }
 
+
+            {isPasswordModalOpen && renderChangePasswordModal()}
         </div >
     );
 };
