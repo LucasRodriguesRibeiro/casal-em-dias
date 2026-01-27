@@ -106,24 +106,18 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
       setError(''); // Clear errors
       alert('Senha atualizada com sucesso! Faça login com sua nova senha.');
     } catch (err: any) {
-      // If fails (likely due to bypass where we have no session), force entry
-      console.warn("Update password failed (bypass mode active). Forcing login.");
-
-      alert('Acesso recuperado! Você entrou no sistema.');
-
-      // Force Login with temporary user object
-      onLogin({
-        id: 'bypass-' + Date.now(),
-        email: formData.email,
-        name: formData.name || 'Usuário Recuperado'
-      });
-      // No need to reset state as we are unmounting/redirecting via onLogin
+      console.error("Password update error:", err);
+      // If we are in "bypass mode" (no real session), we can't actually update the password on the server.
+      // We must inform the user instead of logging them into a fake account.
+      if (otpCode === '123456') {
+        setError('Atenção: O código 123456 é apenas para testes e não permite alterar a senha real. Por favor, use o código enviado para o seu email.');
+      } else {
+        setError(err.message || 'Erro ao atualizar senha.');
+      }
     } finally {
       setLoading(false);
     }
   };
-
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,9 +135,20 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
           }
         });
 
-        // If signup success but no session, it means email confirmation is required
+        // Try to auto-login if session wasn't established immediately (though signUp usually returns it if email confirm is off)
         if (data.user && !data.session) {
-          setNeedsConfirmation(true);
+          // If we are here, it means Supabase IS requiring email confirmation.
+          // We can try to signIn, but it will likely fail if email is not confirmed.
+          // However, per user request to "enter automatically", we assume they disabled the setting.
+          // If they didn't, we show a helpful error.
+          try {
+            await supabaseAuthService.signIn(formData.email, formData.password);
+          } catch (loginErr: any) {
+            if (loginErr.message.includes('Email not confirmed')) {
+              throw new Error('Para entrar automaticamente, desative a "Confirmação de Email" no painel do Supabase (Authentication > Providers > Email).');
+            }
+            throw loginErr;
+          }
         }
 
       } else {
@@ -162,9 +167,8 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
         msg = 'Digite um email válido.';
       } else if (msg.includes('security purposes')) {
         msg = 'Muitas tentativas. Aguarde alguns segundos e tente novamente.';
-      } else if (msg.includes('Email not confirmed')) {
-        setNeedsConfirmation(true);
-        return;
+      } else if (msg.includes('rate limit exceeded')) {
+        msg = 'Muitas tentativas de envio de email. Aguarde um momento ou contate o suporte.';
       }
 
       setError(msg);
@@ -172,44 +176,6 @@ export const AuthScreen: React.FC<AuthProps> = ({ onLogin }) => {
       setLoading(false);
     }
   };
-
-  if (needsConfirmation) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-        <Card className="w-full max-w-md shadow-xl border-none animate-slide-up text-center">
-          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Verifique seu email</h2>
-          <p className="text-slate-600 mb-6">Enviamos um link de confirmação para <strong>{formData.email}</strong>. <br />Clique no link para ativar sua conta.</p>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-100">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <Button onClick={handleCheckConfirmed} className="w-full h-12 gap-2" disabled={loading}>
-              {loading ? 'Verificando...' : 'Já confirmei meu email'}
-            </Button>
-
-            <button
-              onClick={() => {
-                setNeedsConfirmation(false);
-                setIsRegistering(false);
-                setFormData({ ...formData, password: '' });
-                setError('');
-              }}
-              className="block w-full py-2 text-center text-sm text-slate-500 hover:text-slate-800"
-            >
-              Voltar para Login
-            </button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
 
   if (isRecovering) {
     return (
